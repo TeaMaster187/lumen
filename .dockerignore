@@ -1,0 +1,16 @@
+node_modules
+.next
+.git
+.gitignore
+*.log
+dev.log
+server.log
+db/*.db
+db/*.db-journal
+.env*
+!.env.production
+mini-services/chat-service/node_modules
+README.md
+skills
+agent-ctx
+download

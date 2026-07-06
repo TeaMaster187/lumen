@@ -1,0 +1,46 @@
+{
+  "name": "Lumen — Liquid Glass Messenger",
+  "short_name": "Lumen",
+  "description": "A modern, liquid-glass messaging experience with real-time chat, voice & video calls, daily nutrition tracking, gym planner, and progress photos.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait-primary",
+  "background_color": "#0a0814",
+  "theme_color": "#0a0814",
+  "categories": ["social", "communication", "lifestyle", "health"],
+  "lang": "en-US",
+  "dir": "ltr",
+  "prefer_related_applications": false,
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "New chat",
+      "short_name": "New chat",
+      "description": "Start a new conversation",
+      "url": "/?action=new-chat",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Log food",
+      "short_name": "Daily",
+      "description": "Log calories and macros",
+      "url": "/?tab=daily",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Workout",
+      "short_name": "Gym",
+      "description": "View your workout plans",
+      "url": "/?tab=gym",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

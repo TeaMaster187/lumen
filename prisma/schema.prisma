@@ -1,0 +1,270 @@
+// Lumen — Prisma schema (SQLite, for local dev)
+// This is a copy of schema.prisma with provider = "sqlite".
+// The prebuild.js script swaps this in when DATABASE_URL starts with "file:".
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id         String   @id @default(cuid())
+  numericId  Int      @unique
+  phone      String   @unique
+  passwordHash String?
+  name       String
+  username   String?  @unique
+  bio        String?
+  avatarA    String   @default("oklch(0.62 0.24 285)")
+  avatarB    String   @default("oklch(0.66 0.22 330)")
+  avatarUrl  String?
+  dailyPublic        Boolean @default(true)
+  gymPublic          Boolean @default(true)
+  progressPicsPublic Boolean @default(true)
+  readReceipts       Boolean @default(true)
+  notificationsEnabled Boolean @default(true)
+  hapticsEnabled     Boolean @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  memberships ChatMember[]
+  messages    Message[]
+  sessions    Session[]
+  reactions   Reaction[]
+  streaksAsUserA Streak[] @relation("StreakUserA")
+  streaksAsUserB Streak[] @relation("StreakUserB")
+  auraCards   AuraCard[]
+  matchesInitiated AuraMatch[] @relation("MatchInitiator")
+  matchesReceived  AuraMatch[] @relation("MatchTarget")
+  workoutPlans WorkoutPlan[]
+  dailyLogs   DailyLog[]
+  progressPics ProgressPic[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Chat {
+  id        String   @id @default(cuid())
+  kind      String   @default("private") // private | group | channel | saved
+  name      String?
+  avatarA   String?
+  avatarB   String?
+  rules     String? // JSON string of group rules
+  maxMembers Int     @default(2)
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members  ChatMember[]
+  messages Message[]
+
+  @@index([createdBy])
+}
+
+model ChatMember {
+  id         String    @id @default(cuid())
+  chatId     String
+  userId     String
+  role       String    @default("member") // owner | admin | member
+  joinedAt   DateTime  @default(now())
+  lastReadAt DateTime?
+  muted      Boolean   @default(false)
+  archived   Boolean   @default(false)
+
+  chat Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([chatId, userId])
+  @@index([userId])
+}
+
+model Message {
+  id        String   @id @default(cuid())
+  chatId    String
+  senderId  String
+  kind      String   @default("text") // text | photo | video | voice | sticker | file | gif | system
+  text      String?
+  meta      String? // JSON string for kind-specific data
+  replyToId String?
+  expiresAt DateTime?
+  deletedAt DateTime?
+  editedAt  DateTime?
+  createdAt DateTime @default(now())
+
+  chat    Chat      @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  sender  User      @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  replyTo Message?  @relation("MessageReply", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies Message[] @relation("MessageReply")
+  reactions Reaction[]
+
+  @@index([chatId, createdAt])
+  @@index([senderId])
+}
+
+model Reaction {
+  id        String   @id @default(cuid())
+  messageId String
+  userId    String
+  emoji     String
+  createdAt DateTime @default(now())
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId, emoji])
+  @@index([messageId])
+}
+
+model InviteCode {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  createdBy String?
+  uses      Int      @default(0)
+  maxUses   Int      @default(1)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model Streak {
+  id        String   @id @default(cuid())
+  userAId   String
+  userBId   String
+  count     Int      @default(0)
+  lastActivityDate DateTime
+
+  userA User @relation("StreakUserA", fields: [userAId], references: [id], onDelete: Cascade)
+  userB User @relation("StreakUserB", fields: [userBId], references: [id], onDelete: Cascade)
+
+  @@unique([userAId, userBId])
+  @@index([userBId])
+}
+
+model AuraCard {
+  id        String   @id @default(cuid())
+  userId    String
+  posterId  String?
+  photoUrl  String
+  caption   String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+model AuraMatch {
+  id        String   @id @default(cuid())
+  initiatorId String
+  targetId    String
+  status      String  @default("pending") // pending | matched | declined
+  createdAt DateTime @default(now())
+
+  initiator User @relation("MatchInitiator", fields: [initiatorId], references: [id], onDelete: Cascade)
+  target    User @relation("MatchTarget", fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@unique([initiatorId, targetId])
+  @@index([targetId])
+}
+
+model WorkoutPlan {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  day       String?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exercises WorkoutExercise[]
+
+  @@index([userId])
+}
+
+model WorkoutExercise {
+  id           String   @id @default(cuid())
+  planId       String
+  exerciseId   String
+  exerciseName String
+  bodyPart     String?
+  target       String?
+  equipment    String?
+  gifUrl       String?
+  sets         Int      @default(3)
+  reps         Int      @default(10)
+  weight       Float?
+  completed    Boolean  @default(false)
+  order        Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  plan WorkoutPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@index([planId])
+}
+
+model DailyLog {
+  id          String   @id @default(cuid())
+  userId      String
+  date        DateTime
+  calorieGoal Int      @default(2000)
+  proteinGoal Int      @default(150)
+  carbGoal    Int      @default(200)
+  fatGoal     Int      @default(65)
+  waterGoal   Int      @default(2500)
+  waterIntake Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entries FoodEntry[]
+
+  @@unique([userId, date])
+  @@index([userId])
+}
+
+model FoodEntry {
+  id          String   @id @default(cuid())
+  logId       String
+  meal        String   @default("snack")
+  foodName    String
+  fdcId       String?
+  quantity    Float    @default(1)
+  unit        String   @default("serving")
+  calories    Float    @default(0)
+  protein     Float    @default(0)
+  carbs       Float    @default(0)
+  fat         Float    @default(0)
+  imageUrl    String?
+  aiEstimated Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  log DailyLog @relation(fields: [logId], references: [id], onDelete: Cascade)
+
+  @@index([logId])
+}
+
+// ProgressPic — weekly progress photos for gym tracking
+model ProgressPic {
+  id        String   @id @default(cuid())
+  userId    String
+  photoUrl  String
+  weekLabel String   // e.g. "Week 1", "Week 5"
+  note      String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}

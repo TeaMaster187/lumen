@@ -1,0 +1,35 @@
+# Render Blueprint for Lumen
+# https://render.com/docs/blueprint-spec
+#
+# Setup:
+# 1. Create a free Neon Postgres database (see NEON_SETUP.md)
+# 2. Get your connection string (looks like postgresql://user:pass@host/db?sslmode=require)
+# 3. In Render, set DATABASE_URL as a secret with that connection string
+# 4. Deploy
+
+services:
+  - type: web
+    name: lumen
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: CHAT_SERVICE_PORT
+        value: 3003
+      # REQUIRED: Neon PostgreSQL connection string
+      # Format: postgresql://user:password@ep-xxx.us-east-2.aws.neon.tech/dbname?sslmode=require
+      - key: DATABASE_URL
+        sync: false
+      # Optional: USDA FoodData Central API key for real food search
+      # - key: USDA_API_KEY
+      #   sync: false
+      # Optional: ExerciseDB RapidAPI key for real exercise database
+      # - key: EXERCISEDB_API_KEY
+      #   sync: false

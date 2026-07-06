@@ -1,0 +1,1252 @@
+     1→'use client'
+     2→
+     3→import { create } from 'zustand'
+     4→import { useShallow } from 'zustand/react/shallow'
+     5→import { io, type Socket } from 'socket.io-client'
+     6→import type { ApiChat, ApiMessage, ApiUser, MessageMeta } from '@/lib/types'
+     7→
+     8→export type Screen =
+     9→  | 'splash'
+    10→  | 'onboarding'
+    11→  | 'login'
+    12→  | 'chats'
+    13→  | 'chat'
+    14→  | 'calls'
+    15→  | 'contacts'
+    16→  | 'settings'
+    17→  | 'profile'
+    18→  | 'new-chat'
+    19→  | 'call'
+    20→  | 'aura'
+    21→  | 'aura-profile'
+    22→  | 'streaks'
+    23→  | 'gym'
+    24→  | 'gym-plan'
+    25→  | 'daily'
+    26→  | 'online-users'
+    27→  | 'user-profile'
+    28→
+    29→export type ThemeName = 'aurora' | 'frost' | 'sunset' | 'forest'
+    30→export type ThemeMode = 'light' | 'dark' | 'system'
+    31→
+    32→type State = {
+    33→  // routing
+    34→  screen: Screen
+    35→  activeChatId: string | null
+    36→  activeStoryId: string | null
+    37→  previousScreen: Screen | null
+    38→
+    39→  // auth
+    40→  me: ApiUser | null
+    41→  authLoading: boolean
+    42→  authToken: string | null
+    43→
+    44→  // data
+    45→  chats: ApiChat[]
+    46→  messagesByChat: Record<string, ApiMessage[]>
+    47→
+    48→  // chat list
+    49→  searchQuery: string
+    50→
+    51→  // composer
+    52→  draftByChat: Record<string, string>
+    53→  replyingTo: ApiMessage | null
+    54→  showEmojiPicker: boolean
+    55→  showAttachSheet: boolean
+    56→
+    57→  // presence + typing
+    58→  onlineUserIds: Set<string>
+    59→  typingByChat: Record<string, { userId: string; name: string } | null>
+    60→
+    61→  // theme
+    62→  themeName: ThemeName
+    63→  themeMode: ThemeMode
+    64→
+    65→  // settings
+    66→  readReceipts: boolean
+    67→  notifications: boolean
+    68→  haptics: boolean
+    69→
+    70→  // socket
+    71→  socket: Socket | null
+    72→  socketConnected: boolean
+    73→
+    74→  // call state
+    75→  activeCall: {
+    76→    chatId: string
+    77→    peerName: string
+    78→    peerInitials: string
+    79→    peerAvatarA: string
+    80→    peerAvatarB: string
+    81→    peerAvatarUrl: string | null
+    82→    peerUserId: string
+    83→    kind: 'voice' | 'video'
+    84→    direction: 'out' | 'in'
+    85→    status: 'calling' | 'ringing' | 'connected' | 'ended'
+    86→    startedAt: number
+    87→    remoteStream: MediaStream | null
+    88→  } | null
+    89→  incomingCall: {
+    90→    chatId: string
+    91→    fromUserId: string
+    92→    fromName: string
+    93→    kind: 'voice' | 'video'
+    94→    offer: RTCSessionDescriptionInit | null
+    95→  } | null
+    96→
+    97→  // pagination
+    98→  hasMoreMessages: Record<string, boolean>
+    99→  loadingMoreMessages: boolean
+   100→
+   101→  // contacts
+   102→  contacts: {
+   103→    id: string
+   104→    numericId: number
+   105→    numericIdStr: string
+   106→    name: string
+   107→    username: string | null
+   108→    avatarA: string
+   109→    avatarB: string
+   110→    avatarUrl: string | null
+   111→    avatarInitials: string
+   112→    chatId: string
+   113→  }[]
+   114→
+   115→  // streaks
+   116→  streaks: {
+   117→    id: string
+   118→    count: number
+   119→    lastActivityDate: string
+   120→    peer: {
+   121→      id: string
+   122→      name: string
+   123→      numericId: number
+   124→      username: string | null
+   125→      avatarA: string
+   126→      avatarB: string
+   127→      avatarUrl: string | null
+   128→    }
+   129→  }[]
+   130→
+   131→  // aura
+   132→  auraFeed: {
+   133→    id: string
+   134→    numericId: number
+   135→    numericIdStr: string
+   136→    name: string
+   137→    username: string | null
+   138→    bio: string | null
+   139→    avatarA: string
+   140→    avatarB: string
+   141→    avatarUrl: string | null
+   142→    avatarInitials: string
+   143→    cardCount: number
+   144→    latestCard: { id: string; photoUrl: string; caption: string | null; createdAt: string } | null
+   145→    matched: boolean
+   146→  }[]
+   147→  activeAuraUserId: string | null
+   148→
+   149→  // gym
+   150→  workoutPlans: {
+   151→    id: string
+   152→    name: string
+   153→    day: string | null
+   154→    notes: string | null
+   155→    exercises: {
+   156→      id: string
+   157→      exerciseId: string
+   158→      exerciseName: string
+   159→      bodyPart: string | null
+   160→      target: string | null
+   161→      equipment: string | null
+   162→      gifUrl: string | null
+   163→      sets: number
+   164→      reps: number
+   165→      weight: number | null
+   166→      completed: boolean
+   167→      order: number
+   168→    }[]
+   169→  }[]
+   170→  activeGymPlanId: string | null
+   171→
+   172→  // daily (nutrition tracking)
+   173→  dailyLog: {
+   174→    id: string
+   175→    date: string
+   176→    calorieGoal: number
+   177→    proteinGoal: number
+   178→    carbGoal: number
+   179→    fatGoal: number
+   180→    waterGoal: number
+   181→    waterIntake: number
+   182→    entries: {
+   183→      id: string
+   184→      meal: string
+   185→      foodName: string
+   186→      fdcId: string | null
+   187→      quantity: number
+   188→      unit: string
+   189→      calories: number
+   190→      protein: number
+   191→      carbs: number
+   192→      fat: number
+   193→      imageUrl: string | null
+   194→      aiEstimated: boolean
+   195→      createdAt: string
+   196→    }[]
+   197→  } | null
+   198→  dailyTotals: { calories: number; protein: number; carbs: number; fat: number } | null
+   199→
+   200→  // online users + public profile
+   201→  onlineUsers: {
+   202→    id: string
+   203→    numericId: number
+   204→    name: string
+   205→    username: string | null
+   206→    avatarA: string
+   207→    avatarB: string
+   208→    avatarUrl: string | null
+   209→    avatarInitials: string
+   210→  }[]
+   211→  activeUserProfileId: string | null
+   212→  userProfileData: {
+   213→    user: {
+   214→      id: string
+   215→      name: string
+   216→      username: string | null
+   217→      bio: string | null
+   218→      avatarA: string
+   219→      avatarB: string
+   220→      avatarUrl: string | null
+   221→      avatarInitials: string
+   222→      numericIdStr: string
+   223→      isSelf: boolean
+   224→      dailyPublic: boolean
+   225→      gymPublic: boolean
+   226→    }
+   227→    dailySummary: {
+   228→      calorieGoal: number
+   229→      proteinGoal: number
+   230→      carbGoal: number
+   231→      fatGoal: number
+   232→      totals: { calories: number; protein: number; carbs: number; fat: number }
+   233→      entryCount: number
+   234→    } | null
+   235→    workoutPlans: {
+   236→      id: string
+   237→      name: string
+   238→      day: string | null
+   239→      exerciseCount: number
+   240→      completedCount: number
+   241→    }[] | null
+   242→  } | null
+   243→}
+   244→
+   245→type Actions = {
+   246→  init: () => Promise<void>
+   247→  navigate: (screen: Screen) => void
+   248→  openChat: (chatId: string) => Promise<void>
+   249→  back: () => void
+   250→  setSearch: (q: string) => void
+   251→
+   252→  register: (phone: string, name: string, inviteCode: string, password: string, username?: string) => Promise<{ ok: boolean; error?: string }>
+   253→  login: (phone: string, password: string) => Promise<{ ok: boolean; error?: string }>
+   254→  logout: () => Promise<void>
+   255→
+   256→  setDraft: (chatId: string, text: string) => void
+   257→  sendMessage: (chatId: string, text: string, selfDestructSec?: number) => Promise<void>
+   258→  sendSticker: (chatId: string, emoji: string) => Promise<void>
+   259→  sendVoice: (chatId: string, durationSec: number, audioDataUrl: string, waveform: number[]) => Promise<void>
+   260→  setReplyingTo: (m: ApiMessage | null) => void
+   261→  setShowEmojiPicker: (v: boolean) => void
+   262→  setShowAttachSheet: (v: boolean) => void
+   263→
+   264→  startDirectChat: (phone: string) => Promise<{ ok: boolean; chatId?: string; error?: string }>
+   265→  refreshChats: () => Promise<void>
+   266→  loadMessages: (chatId: string) => Promise<void>
+   267→  loadMoreMessages: (chatId: string) => Promise<void>
+   268→  hasMoreMessages: Record<string, boolean>
+   269→  loadingMoreMessages: boolean
+   270→
+   271→  toggleReaction: (messageId: string, emoji: string) => Promise<void>
+   272→  deleteMessage: (messageId: string) => Promise<void>
+   273→  editMessage: (messageId: string, text: string) => Promise<void>
+   274→
+   275→  sendMedia: (
+   276→    chatId: string,
+   277→    kind: 'photo' | 'video' | 'gif' | 'file',
+   278→    dataUrl: string,
+   279→    opts?: { aspect?: number; width?: number; height?: number; caption?: string; fileName?: string; fileSize?: string },
+   280→  ) => Promise<void>
+   281→
+   282→  updateSettings: (data: { readReceipts?: boolean; notificationsEnabled?: boolean; hapticsEnabled?: boolean; dailyPublic?: boolean; gymPublic?: boolean }) => Promise<void>
+   283→
+   284→  refreshContacts: () => Promise<void>
+   285→  contacts: {
+   286→    id: string
+   287→    numericId: number
+   288→    numericIdStr: string
+   289→    name: string
+   290→    username: string | null
+   291→    avatarA: string
+   292→    avatarB: string
+   293→    avatarUrl: string | null
+   294→    avatarInitials: string
+   295→    chatId: string
+   296→  }[]
+   297→
+   298→  refreshStreaks: () => Promise<void>
+   299→  streaks: {
+   300→    id: string
+   301→    count: number
+   302→    lastActivityDate: string
+   303→    peer: {
+   304→      id: string
+   305→      name: string
+   306→      numericId: number
+   307→      username: string | null
+   308→      avatarA: string
+   309→      avatarB: string
+   310→      avatarUrl: string | null
+   311→    }
+   312→  }[]
+   313→
+   314→  refreshAuraFeed: () => Promise<void>
+   315→  openAuraProfile: (userId: string) => void
+   316→  addAuraCard: (userId: string, dataUrl: string, caption?: string) => Promise<{ ok: boolean; error?: string }>
+   317→  auraFeed: {
+   318→    id: string
+   319→    numericId: number
+   320→    numericIdStr: string
+   321→    name: string
+   322→    username: string | null
+   323→    bio: string | null
+   324→    avatarA: string
+   325→    avatarB: string
+   326→    avatarUrl: string | null
+   327→    avatarInitials: string
+   328→    cardCount: number
+   329→    latestCard: { id: string; photoUrl: string; caption: string | null; createdAt: string } | null
+   330→    matched: boolean
+   331→  }[]
+   332→  activeAuraUserId: string | null
+   333→
+   334→  // gym
+   335→  refreshWorkoutPlans: () => Promise<void>
+   336→  createWorkoutPlan: (name: string, day?: string, notes?: string) => Promise<{ ok: boolean; planId?: string; error?: string }>
+   337→  deleteWorkoutPlan: (planId: string) => Promise<void>
+   338→  addExerciseToPlan: (planId: string, exercise: {
+   339→    exerciseId: string; exerciseName: string; bodyPart?: string; target?: string; equipment?: string; gifUrl?: string; sets?: number; reps?: number
+   340→  }) => Promise<{ ok: boolean; error?: string }>
+   341→  toggleExerciseCompleted: (planId: string, exerciseId: string) => Promise<void>
+   342→  removeExerciseFromPlan: (planId: string, exerciseId: string) => Promise<void>
+   343→  openGymPlan: (planId: string) => void
+   344→  workoutPlans: {
+   345→    id: string
+   346→    name: string
+   347→    day: string | null
+   348→    notes: string | null
+   349→    exercises: {
+   350→      id: string
+   351→      exerciseId: string
+   352→      exerciseName: string
+   353→      bodyPart: string | null
+   354→      target: string | null
+   355→      equipment: string | null
+   356→      gifUrl: string | null
+   357→      sets: number
+   358→      reps: number
+   359→      weight: number | null
+   360→      completed: boolean
+   361→      order: number
+   362→    }[]
+   363→  }[]
+   364→  activeGymPlanId: string | null
+   365→
+   366→  // daily
+   367→  refreshDailyLog: () => Promise<void>
+   368→  addFoodEntry: (entry: {
+   369→    meal: string
+   370→    foodName: string
+   371→    fdcId?: string
+   372→    quantity?: number
+   373→    unit?: string
+   374→    calories: number
+   375→    protein: number
+   376→    carbs: number
+   377→    fat: number
+   378→    imageUrl?: string
+   379→    aiEstimated?: boolean
+   380→  }) => Promise<{ ok: boolean; error?: string }>
+   381→  removeFoodEntry: (entryId: string) => Promise<void>
+   382→  updateDailyGoals: (goals: { calorieGoal?: number; proteinGoal?: number; carbGoal?: number; fatGoal?: number; waterGoal?: number }) => Promise<void>
+   383→  addWater: (ml: number) => Promise<void>
+   384→  aiEstimateFood: (imageDataUrl: string) => Promise<{
+   385→    ok: boolean
+   386→    result?: { foodName: string; calories: number; protein: number; carbs: number; fat: number; confidence: string }
+   387→    error?: string
+   388→  }>
+   389→  dailyLog: {
+   390→    id: string
+   391→    date: string
+   392→    calorieGoal: number
+   393→    proteinGoal: number
+   394→    carbGoal: number
+   395→    fatGoal: number
+   396→    waterGoal: number
+   397→    waterIntake: number
+   398→    entries: {
+   399→      id: string
+   400→      meal: string
+   401→      foodName: string
+   402→      fdcId: string | null
+   403→      quantity: number
+   404→      unit: string
+   405→      calories: number
+   406→      protein: number
+   407→      carbs: number
+   408→      fat: number
+   409→      imageUrl: string | null
+   410→      aiEstimated: boolean
+   411→      createdAt: string
+   412→    }[]
+   413→  } | null
+   414→  dailyTotals: { calories: number; protein: number; carbs: number; fat: number } | null
+   415→
+   416→  // online users + public profile
+   417→  onlineUsers: {
+   418→    id: string
+   419→    numericId: number
+   420→    name: string
+   421→    username: string | null
+   422→    avatarA: string
+   423→    avatarB: string
+   424→    avatarUrl: string | null
+   425→    avatarInitials: string
+   426→  }[]
+   427→  refreshOnlineUsers: () => Promise<void>
+   428→  openUserProfile: (userId: string) => void
+   429→  activeUserProfileId: string | null
+   430→  userProfileData: {
+   431→    user: {
+   432→      id: string
+   433→      name: string
+   434→      username: string | null
+   435→      bio: string | null
+   436→      avatarA: string
+   437→      avatarB: string
+   438→      avatarUrl: string | null
+   439→      avatarInitials: string
+   440→      numericIdStr: string
+   441→      isSelf: boolean
+   442→      dailyPublic: boolean
+   443→      gymPublic: boolean
+   444→    }
+   445→    dailySummary: {
+   446→      calorieGoal: number
+   447→      proteinGoal: number
+   448→      carbGoal: number
+   449→      fatGoal: number
+   450→      totals: { calories: number; protein: number; carbs: number; fat: number }
+   451→      entryCount: number
+   452→    } | null
+   453→    workoutPlans: {
+   454→      id: string
+   455→      name: string
+   456→      day: string | null
+   457→      exerciseCount: number
+   458→      completedCount: number
+   459→    }[] | null
+   460→  } | null
+   461→
+   462→  lookupUser: (query: string, by: 'id' | 'phone' | 'username') => Promise<{
+   463→    ok: boolean
+   464→    user?: {
+   465→      id: string
+   466→      numericId: number
+   467→      name: string
+   468→      username: string | null
+   469→      avatarA: string
+   470→      avatarB: string
+   471→      avatarUrl: string | null
+   472→      avatarInitials: string
+   473→    }
+   474→    error?: string
+   475→  }>
+   476→  startDirectChatById: (userId: string) => Promise<{ ok: boolean; chatId?: string; error?: string }>
+   477→  startDirectChatByNumericId: (numericId: number | string) => Promise<{ ok: boolean; chatId?: string; error?: string }>
+   478→
+   479→  updateProfile: (data: { username?: string; name?: string; bio?: string }) => Promise<{ ok: boolean; error?: string }>
+   480→  uploadAvatar: (dataUrl: string) => Promise<{ ok: boolean; error?: string }>
+   481→
+   482→  sendMedia: (
+   483→    chatId: string,
+   484→    kind: 'photo' | 'video' | 'gif',
+   485→    dataUrl: string,
+   486→    opts?: { aspect?: number; width?: number; height?: number; caption?: string },
+   487→  ) => Promise<void>
+   488→
+   489→  // call state
+   490→  activeCall: {
+   491→    chatId: string
+   492→    peerName: string
+   493→    peerInitials: string
+   494→    peerAvatarA: string
+   495→    peerAvatarB: string
+   496→    peerAvatarUrl: string | null
+   497→    kind: 'voice' | 'video'
+   498→    direction: 'out' | 'in'
+   499→    status: 'calling' | 'ringing' | 'connected' | 'ended'
+   500→    startedAt: number
+   501→  } | null
+   502→  startCall: (chatId: string, kind: 'voice' | 'video') => Promise<void>
+   503→  endCall: () => void
+   504→  acceptCall: () => Promise<void>
+   505→  declineCall: () => void
+   506→  incomingCall: { chatId: string; fromUserId: string; fromName: string; kind: 'voice' | 'video'; offer: RTCSessionDescriptionInit | null } | null
+   507→  declineIncomingCall: () => void
+   508→
+   509→  setTyping: (chatId: string, isTyping: boolean) => void
+   510→
+   511→  setThemeName: (t: ThemeName) => void
+   512→  setThemeMode: (m: ThemeMode) => void
+   513→  setReadReceipts: (v: boolean) => void
+   514→  setNotifications: (v: boolean) => void
+   515→  setHaptics: (v: boolean) => void
+   516→
+   517→  connectSocket: () => void
+   518→}
+   519→
+   520→export type AppStore = State & Actions
+   521→
+   522→// Module-level socket singleton (so reconnecting same socket during HMR doesn't duplicate)
+   523→let _socket: Socket | null = null
+   524→
+   525→// WebRTC resources — not serializable, kept outside Zustand state
+   526→let _peerConnection: RTCPeerConnection | null = null
+   527→let _localStream: MediaStream | null = null
+   528→
+   529→function _cleanupCallResources() {
+   530→  if (_localStream) { _localStream.getTracks().forEach((t) => t.stop()); _localStream = null }
+   531→  if (_peerConnection) { _peerConnection.close(); _peerConnection = null }
+   532→}
+   533→
+   534→export const useApp = create<AppStore>((set, get) => ({
+   535→  // routing
+   536→  screen: 'splash',
+   537→  activeChatId: null,
+   538→  activeStoryId: null,
+   539→  previousScreen: null,
+   540→
+   541→  // auth
+   542→  me: null,
+   543→  authLoading: true,
+   544→  authToken: null,
+   545→
+   546→  // data
+   547→  chats: [],
+   548→  messagesByChat: {},
+   549→  searchQuery: '',
+   550→
+   551→  // composer
+   552→  draftByChat: {},
+   553→  replyingTo: null,
+   554→  showEmojiPicker: false,
+   555→  showAttachSheet: false,
+   556→
+   557→  // presence + typing
+   558→  onlineUserIds: new Set<string>(),
+   559→  typingByChat: {},
+   560→
+   561→  // theme
+   562→  themeName: 'aurora',
+   563→  themeMode: 'dark',
+   564→
+   565→  // settings
+   566→  readReceipts: true,
+   567→  notifications: true,
+   568→  haptics: true,
+   569→
+   570→  // socket
+   571→  socket: null,
+   572→  socketConnected: false,
+   573→
+   574→  // call state
+   575→  activeCall: null,
+   576→  incomingCall: null,
+   577→
+   578→  // pagination
+   579→  hasMoreMessages: {},
+   580→  loadingMoreMessages: false,
+   581→
+   582→  // contacts
+   583→  contacts: [],
+   584→
+   585→  // streaks
+   586→  streaks: [],
+   587→
+   588→  // aura
+   589→  auraFeed: [],
+   590→  activeAuraUserId: null,
+   591→
+   592→  // gym
+   593→  workoutPlans: [],
+   594→  activeGymPlanId: null,
+   595→
+   596→  // daily
+   597→  dailyLog: null,
+   598→  dailyTotals: null,
+   599→
+   600→  // online users + public profile
+   601→  onlineUsers: [],
+   602→  activeUserProfileId: null,
+   603→  userProfileData: null,
+   604→
+   605→  // ----------------- actions -----------------
+   606→
+   607→  init: async () => {
+   608→    try {
+   609→      const res = await fetch('/api/auth/me', { credentials: 'include' })
+   610→      const data = await res.json()
+   611→      if (data.user) {
+   612→        set({
+   613→          me: data.user,
+   614→          screen: 'chats',
+   615→          authLoading: false,
+   616→          readReceipts: data.user.readReceipts,
+   617→          notifications: data.user.notificationsEnabled,
+   618→          haptics: data.user.hapticsEnabled,
+   619→        })
+   620→        await get().refreshChats()
+   621→        get().refreshContacts()
+   622→        get().refreshStreaks()
+   623→        get().refreshAuraFeed()
+   624→        get().refreshWorkoutPlans()
+   625→        get().refreshDailyLog()
+   626→        get().connectSocket()
+   627→      } else {
+   628→        set({ me: null, screen: 'onboarding', authLoading: false })
+   629→      }
+   630→    } catch (e) {
+   631→      console.error('[init] error', e)
+   632→      set({ me: null, screen: 'onboarding', authLoading: false })
+   633→    }
+   634→  },
+   635→
+   636→  navigate: (screen) => set((s) => ({ screen, previousScreen: s.screen })),
+   637→
+   638→  openChat: async (chatId) => {
+   639→    set((s) => ({
+   640→      screen: 'chat',
+   641→      activeChatId: chatId,
+   642→      previousScreen: s.screen,
+   643→      showEmojiPicker: false,
+   644→      showAttachSheet: false,
+   645→      replyingTo: null,
+   646→    }))
+   647→    await get().loadMessages(chatId)
+   648→    // mark read in background
+   649→    fetch(`/api/chats/${chatId}/messages`, { credentials: 'include' }).catch(() => {})
+   650→    // refresh chats to update unread
+   651→    get().refreshChats()
+   652→  },
+   653→
+   654→  back: () =>
+   655→    set((s) => ({
+   656→      screen: s.previousScreen ?? 'chats',
+   657→      previousScreen: null,
+   658→      activeChatId: s.screen === 'chat' ? null : s.activeChatId,
+   659→      activeStoryId: s.screen === 'story-viewer' ? null : s.activeStoryId,
+   660→      showEmojiPicker: false,
+   661→      showAttachSheet: false,
+   662→      replyingTo: null,
+   663→    })),
+   664→
+   665→  setSearch: (q) => set({ searchQuery: q }),
+   666→
+   667→  register: async (phone, name, inviteCode, password, username) => {
+   668→    try {
+   669→      const res = await fetch('/api/auth/register', {
+   670→        method: 'POST',
+   671→        headers: { 'Content-Type': 'application/json' },
+   672→        body: JSON.stringify({ phone, name, inviteCode, password, username }),
+   673→      })
+   674→      const data = await res.json()
+   675→      if (!res.ok) return { ok: false, error: data.error ?? 'Registration failed' }
+   676→      set({ me: data.user, authToken: data.token, screen: 'chats' })
+   677→      await get().refreshChats()
+   678→      get().connectSocket()
+   679→      return { ok: true }
+   680→    } catch (e) {
+   681→      console.error('[register] error', e)
+   682→      return { ok: false, error: 'Network error' }
+   683→    }
+   684→  },
+   685→
+   686→  login: async (phone, password) => {
+   687→    try {
+   688→      const res = await fetch('/api/auth/login', {
+   689→        method: 'POST',
+   690→        headers: { 'Content-Type': 'application/json' },
+   691→        body: JSON.stringify({ phone, password }),
+   692→      })
+   693→      const data = await res.json()
+   694→      if (!res.ok) return { ok: false, error: data.error ?? 'Login failed' }
+   695→      set({ me: data.user, authToken: data.token, screen: 'chats' })
+   696→      await get().refreshChats()
+   697→      get().refreshContacts()
+   698→      get().refreshStreaks()
+   699→      get().refreshAuraFeed()
+   700→      get().refreshWorkoutPlans()
+   701→      get().refreshDailyLog()
+   702→      get().connectSocket()
+   703→      return { ok: true }
+   704→    } catch (e) {
+   705→      console.error('[login] error', e)
+   706→      return { ok: false, error: 'Network error' }
+   707→    }
+   708→  },
+   709→
+   710→  logout: async () => {
+   711→    try {
+   712→      await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' })
+   713→    } catch {}
+   714→    const sock = get().socket
+   715→    if (sock) sock.disconnect()
+   716→    set({
+   717→      me: null,
+   718→      authToken: null,
+   719→      chats: [],
+   720→      messagesByChat: {},
+   721→      activeChatId: null,
+   722→      socket: null,
+   723→      screen: 'onboarding',
+   724→    })
+   725→  },
+   726→
+   727→  setDraft: (chatId, text) =>
+   728→    set((s) => ({ draftByChat: { ...s.draftByChat, [chatId]: text } })),
+   729→
+   730→  sendMessage: async (chatId, text, selfDestructSec?: number) => {
+   731→    const trimmed = text.trim()
+   732→    if (!trimmed) return
+   733→    const replyToId = get().replyingTo?.id ?? null
+   734→    const me = get().me
+   735→    set((s) => ({ draftByChat: { ...s.draftByChat, [chatId]: '' }, replyingTo: null }))
+   736→    // Optimistic: add temp message immediately
+   737→    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+   738→    if (me) {
+   739→      const tempMsg: ApiMessage = {
+   740→        id: tempId, chatId, senderId: me.id, senderName: me.name, kind: 'text', text: trimmed, meta: null,
+   741→        replyToId: replyToId ?? null, replyTo: null, reactions: [],
+   742→        expiresAt: selfDestructSec ? new Date(Date.now() + selfDestructSec * 1000).toISOString() : null,
+   743→        deletedAt: null, editedAt: null, readByPeer: false, createdAt: new Date().toISOString(),
+   744→      }
+   745→      set((s) => ({ messagesByChat: { ...s.messagesByChat, [chatId]: [...(s.messagesByChat[chatId] ?? []), tempMsg] } }))
+   746→    }
+   747→    try {
+   748→      const res = await fetch(`/api/chats/${chatId}/messages`, {
+   749→        method: 'POST', headers: { 'Content-Type': 'application/json' },
+   750→        body: JSON.stringify({ text: trimmed, kind: 'text', replyToId, selfDestructSec }),
+   751→        credentials: 'include',
+   752→      })
+   753→      const data = await res.json()
+   754→      if (res.ok && data.message) {
+   755→        set((s) => ({ messagesByChat: { ...s.messagesByChat, [chatId]: (s.messagesByChat[chatId] ?? []).filter((m) => m.id !== tempId).concat(data.message) } }))
+   756→        get().refreshChats()
+   757→        if (get().haptics && typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(10)
+   758→        get().refreshStreaks()
+   759→      }
+   760→    } catch (e) {
+   761→      console.error('[sendMessage] error', e)
+   762→      set((s) => ({ messagesByChat: { ...s.messagesByChat, [chatId]: (s.messagesByChat[chatId] ?? []).filter((m) => m.id !== tempId) } }))
+   763→      set((s) => ({ draftByChat: { ...s.draftByChat, [chatId]: trimmed } }))
+   764→    }
+   765→  },
+   766→
+   767→  sendSticker: async (chatId, emoji) => {
+   768→    const meta: MessageMeta = { stickerEmoji: emoji }
+   769→    try {
+   770→      const res = await fetch(`/api/chats/${chatId}/messages`, {
+   771→        method: 'POST',
+   772→        headers: { 'Content-Type': 'application/json' },
+   773→        body: JSON.stringify({ text: emoji, kind: 'sticker', meta }),
+   774→        credentials: 'include',
+   775→      })
+   776→      const data = await res.json()
+   777→      if (res.ok && data.message) {
+   778→        set((s) => ({
+   779→          showEmojiPicker: false,
+   780→          messagesByChat: {
+   781→            ...s.messagesByChat,
+   782→            [chatId]: [...(s.messagesByChat[chatId] ?? []), data.message],
+   783→          },
+   784→        }))
+   785→        get().refreshChats()
+   786→      }
+   787→    } catch (e) {
+   788→      console.error('[sendSticker] error', e)
+   789→    }
+   790→  },
+   791→
+   792→  sendVoice: async (chatId, durationSec, audioDataUrl, waveform) => {
+   793→    const meta: MessageMeta = { voiceDurationSec: durationSec, voiceWaveform: waveform, voiceUrl: audioDataUrl }
+   794→    try {
+   795→      const res = await fetch(`/api/chats/${chatId}/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'voice', meta }), credentials: 'include' })
+   796→      const data = await res.json()
+   797→      if (res.ok && data.message) { set((s) => ({ messagesByChat: { ...s.messagesByChat, [chatId]: [...(s.messagesByChat[chatId] ?? []), data.message] } })); get().refreshChats() }
+   798→    } catch (e) { console.error('[sendVoice] error', e) }
+   799→  },
+   800→
+   801→  setReplyingTo: (m) => set({ replyingTo: m, showEmojiPicker: false }),
+   802→  setShowEmojiPicker: (v) => set({ showEmojiPicker: v }),
+   803→  setShowAttachSheet: (v) => set({ showAttachSheet: v }),
+   804→
+   805→  startDirectChat: async (phone) => {
+   806→    try {
+   807→      const res = await fetch('/api/chats/direct', {
+   808→        method: 'POST',
+   809→        headers: { 'Content-Type': 'application/json' },
+   810→        body: JSON.stringify({ phone }),
+   811→        credentials: 'include',
+   812→      })
+   813→      const data = await res.json()
+   814→      if (!res.ok) return { ok: false, error: data.error ?? 'Could not start chat' }
+   815→      await get().refreshChats()
+   816→      return { ok: true, chatId: data.chat.id as string }
+   817→    } catch (e) {
+   818→      console.error('[startDirectChat] error', e)
+   819→      return { ok: false, error: 'Network error' }
+   820→    }
+   821→  },
+   822→
+   823→  refreshChats: async () => {
+   824→    try {
+   825→      const res = await fetch('/api/chats', { credentials: 'include' })
+   826→      const data = await res.json()
+   827→      if (res.ok) set({ chats: data.chats })
+   828→    } catch (e) {
+   829→      console.error('[refreshChats] error', e)
+   830→    }
+   831→  },
+   832→
+   833→  lookupUser: async (query, by) => {
+   834→    try {
+   835→      const params = new URLSearchParams(
+   836→        by === 'id' ? { id: query } : by === 'phone' ? { phone: query } : { username: query },
+   837→      )
+   838→      const res = await fetch(`/api/users/lookup?${params.toString()}`, { credentials: 'include' })
+   839→      const data = await res.json()
+   840→      if (!res.ok) return { ok: false, error: data.error ?? 'Lookup failed' }
+   841→      return { ok: true, user: data.user }
+   842→    } catch (e) {
+   843→      console.error('[lookupUser] error', e)
+   844→      return { ok: false, error: 'Network error' }
+   845→    }
+   846→  },
+   847→
+   848→  startDirectChatById: async (userId) => {
+   849→    try {
+   850→      const res = await fetch('/api/chats/direct', {
+   851→        method: 'POST',
+   852→        headers: { 'Content-Type': 'application/json' },
+   853→        body: JSON.stringify({ userId }),
+   854→        credentials: 'include',
+   855→      })
+   856→      const data = await res.json()
+   857→      if (!res.ok) return { ok: false, error: data.error ?? 'Could not start chat' }
+   858→      await get().refreshChats()
+   859→      return { ok: true, chatId: data.chat.id as string }
+   860→    } catch (e) {
+   861→      console.error('[startDirectChatById] error', e)
+   862→      return { ok: false, error: 'Network error' }
+   863→    }
+   864→  },
+   865→
+   866→  startDirectChatByNumericId: async (numericId) => {
+   867→    try {
+   868→      const res = await fetch('/api/chats/direct', {
+   869→        method: 'POST',
+   870→        headers: { 'Content-Type': 'application/json' },
+   871→        body: JSON.stringify({ numericId }),
+   872→        credentials: 'include',
+   873→      })
+   874→      const data = await res.json()
+   875→      if (!res.ok) return { ok: false, error: data.error ?? 'Could not start chat' }
+   876→      await get().refreshChats()
+   877→      return { ok: true, chatId: data.chat.id as string }
+   878→    } catch (e) {
+   879→      console.error('[startDirectChatByNumericId] error', e)
+   880→      return { ok: false, error: 'Network error' }
+   881→    }
+   882→  },
+   883→
+   884→  updateProfile: async (data) => {
+   885→    try {
+   886→      const res = await fetch('/api/users/me', {
+   887→        method: 'PATCH',
+   888→        headers: { 'Content-Type': 'application/json' },
+   889→        body: JSON.stringify(data),
+   890→        credentials: 'include',
+   891→      })
+   892→      const json = await res.json()
+   893→      if (!res.ok) return { ok: false, error: json.error ?? 'Update failed' }
+   894→      set({ me: json.user })
+   895→      return { ok: true }
+   896→    } catch (e) {
+   897→      console.error('[updateProfile] error', e)
+   898→      return { ok: false, error: 'Network error' }
+   899→    }
+   900→  },
+   901→
+   902→  uploadAvatar: async (dataUrl) => {
+   903→    try {
+   904→      const res = await fetch('/api/users/avatar', {
+   905→        method: 'POST',
+   906→        headers: { 'Content-Type': 'application/json' },
+   907→        body: JSON.stringify({ dataUrl }),
+   908→        credentials: 'include',
+   909→      })
+   910→      const json = await res.json()
+   911→      if (!res.ok) return { ok: false, error: json.error ?? 'Upload failed' }
+   912→      set({ me: json.user })
+   913→      return { ok: true }
+   914→    } catch (e) {
+   915→      console.error('[uploadAvatar] error', e)
+   916→      return { ok: false, error: 'Network error' }
+   917→    }
+   918→  },
+   919→
+   920→  sendMedia: async (chatId, kind, dataUrl, opts) => {
+   921→    try {
+   922→      const res = await fetch(`/api/chats/${chatId}/upload`, {
+   923→        method: 'POST',
+   924→        headers: { 'Content-Type': 'application/json' },
+   925→        body: JSON.stringify({
+   926→          kind,
+   927→          dataUrl,
+   928→          aspect: opts?.aspect,
+   929→          width: opts?.width,
+   930→          height: opts?.height,
+   931→          caption: opts?.caption,
+   932→        }),
+   933→        credentials: 'include',
+   934→      })
+   935→      const data = await res.json()
+   936→      if (res.ok && data.message) {
+   937→        set((s) => ({
+   938→          showAttachSheet: false,
+   939→          messagesByChat: {
+   940→            ...s.messagesByChat,
+   941→            [chatId]: [...(s.messagesByChat[chatId] ?? []), data.message],
+   942→          },
+   943→        }))
+   944→        get().refreshChats()
+   945→      }
+   946→    } catch (e) {
+   947→      console.error('[sendMedia] error', e)
+   948→    }
+   949→  },
+   950→
+   951→  startCall: async (chatId, kind) => {
+   952→    const chat = get().chats.find((c) => c.id === chatId)
+   953→    if (!chat || !chat.otherUserId) return
+   954→    const me = get().me; if (!me) return
+   955→    try {
+   956→      const constraints: MediaStreamConstraints = kind === 'video' ? { audio: true, video: { facingMode: 'user' } } : { audio: true, video: false }
+   957→      const localStream = await navigator.mediaDevices.getUserMedia(constraints)
+   958→      _localStream = localStream
+   959→      const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }] })
+   960→      _peerConnection = pc
+   961→      localStream.getTracks().forEach((track) => pc.addTrack(track, localStream))
+   962→      const remoteStream = new MediaStream()
+   963→      pc.ontrack = (event) => { event.streams[0].getTracks().forEach((track) => remoteStream.addTrack(track)); const cur = get().activeCall; if (cur) set({ activeCall: { ...cur, remoteStream, status: 'connected', startedAt: Date.now() } }) }
+   964→      pc.onicecandidate = (event) => { if (event.candidate && _socket) _socket.emit('call-signal', { toUserId: chat.otherUserId, type: 'ice', data: event.candidate.toJSON() }) }
+   965→      pc.onconnectionstatechange = () => { if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') get().endCall() }
+   966→      const offer = await pc.createOffer(); await pc.setLocalDescription(offer)
+   967→      if (_socket) { _socket.emit('call-signal', { toUserId: chat.otherUserId, type: 'invite', chatId, kind, fromName: me.name }); _socket.emit('call-signal', { toUserId: chat.otherUserId, type: 'offer', data: offer }) }
+   968→      set({ activeCall: { chatId, peerName: chat.name, peerInitials: chat.avatarInitials, peerAvatarA: chat.avatarA, peerAvatarB: chat.avatarB, peerAvatarUrl: chat.otherUserAvatarUrl ?? null, peerUserId: chat.otherUserId, kind, direction: 'out', status: 'calling', startedAt: Date.now(), remoteStream: null }, screen: 'call', previousScreen: get().screen })
+   969→    } catch (e) { console.error('[startCall] error', e); _cleanupCallResources(); alert('Could not access microphone/camera.') }
+   970→  },
+   971→
+   972→  acceptCall: async () => {
+   973→    const incoming = get().incomingCall; if (!incoming || !incoming.offer) return
+   974→    const me = get().me; if (!me) return
+   975→    try {
+   976→      const constraints: MediaStreamConstraints = incoming.kind === 'video' ? { audio: true, video: { facingMode: 'user' } } : { audio: true, video: false }
+   977→      const localStream = await navigator.mediaDevices.getUserMedia(constraints); _localStream = localStream
+   978→      const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }); _peerConnection = pc
+   979→      localStream.getTracks().forEach((track) => pc.addTrack(track, localStream))
+   980→      const remoteStream = new MediaStream()
+   981→      pc.ontrack = (event) => { event.streams[0].getTracks().forEach((track) => remoteStream.addTrack(track)); const cur = get().activeCall; if (cur) set({ activeCall: { ...cur, remoteStream, status: 'connected', startedAt: Date.now() } }) }
+   982→      pc.onicecandidate = (event) => { if (event.candidate && _socket) _socket.emit('call-signal', { toUserId: incoming.fromUserId, type: 'ice', data: event.candidate.toJSON() }) }
+   983→      pc.onconnectionstatechange = () => { if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') get().endCall() }
+   984→      await pc.setRemoteDescription(incoming.offer)
+   985→      const answer = await pc.createAnswer(); await pc.setLocalDescription(answer)
+   986→      if (_socket) _socket.emit('call-signal', { toUserId: incoming.fromUserId, type: 'answer', data: answer })
+   987→      const chat = get().chats.find((c) => c.otherUserId === incoming.fromUserId)
+   988→      set({ incomingCall: null, activeCall: { chatId: incoming.chatId, peerName: chat?.name ?? incoming.fromName, peerInitials: chat?.avatarInitials ?? '??', peerAvatarA: chat?.avatarA ?? 'oklch(0.62 0.24 285)', peerAvatarB: chat?.avatarB ?? 'oklch(0.66 0.22 330)', peerAvatarUrl: chat?.otherUserAvatarUrl ?? null, peerUserId: incoming.fromUserId, kind: incoming.kind, direction: 'in', status: 'connected', startedAt: Date.now(), remoteStream: null }, screen: 'call', previousScreen: get().screen })
+   989→    } catch (e) { console.error('[acceptCall] error', e); _cleanupCallResources(); alert('Could not access microphone/camera.'); set({ incomingCall: null }) }
+   990→  },
+   991→
+   992→  declineCall: () => {
+   993→    const incoming = get().incomingCall
+   994→    if (incoming && _socket) _socket.emit('call-signal', { toUserId: incoming.fromUserId, type: 'reject' })
+   995→    set({ incomingCall: null })
+   996→  },
+   997→
+   998→  endCall: () => {
+   999→    const cur = get().activeCall
+  1000→    if (cur && _socket) _socket.emit('call-signal', { toUserId: cur.peerUserId, type: 'end' })
+  1001→    _cleanupCallResources()
+  1002→    set((s) => ({ activeCall: null, screen: s.previousScreen ?? 'chats', previousScreen: null }))
+  1003→  },
+  1004→
+  1005→  declineIncomingCall: () => set({ incomingCall: null }),
+  1006→
+  1007→  loadMessages: async (chatId) => {
+  1008→    try {
+  1009→      const res = await fetch(`/api/chats/${chatId}/messages?limit=50`, { credentials: 'include' })
+  1010→      const data = await res.json()
+  1011→      if (res.ok) {
+  1012→        set((s) => ({
+  1013→          messagesByChat: { ...s.messagesByChat, [chatId]: data.messages },
+  1014→          hasMoreMessages: { ...s.hasMoreMessages, [chatId]: data.hasMore },
+  1015→          chats: s.chats.map((c) => c.id === chatId ? { ...c, unreadCount: 0 } : c),
+  1016→        }))
+  1017→      }
+  1018→    } catch (e) { console.error('[loadMessages] error', e) }
+  1019→  },
+  1020→
+  1021→  loadMoreMessages: async (chatId) => {
+  1022→    const state = get()
+  1023→    if (state.loadingMoreMessages || !state.hasMoreMessages[chatId]) return
+  1024→    const messages = state.messagesByChat[chatId] ?? []
+  1025→    if (messages.length === 0) return
+  1026→    const oldestId = messages[0].id
+  1027→    set({ loadingMoreMessages: true })
+  1028→    try {
+  1029→      const res = await fetch(`/api/chats/${chatId}/messages?before=${oldestId}&limit=50`, { credentials: 'include' })
+  1030→      const data = await res.json()
+  1031→      if (res.ok) {
+  1032→        set((s) => ({
+  1033→          messagesByChat: { ...s.messagesByChat, [chatId]: [...data.messages, ...(s.messagesByChat[chatId] ?? [])] },
+  1034→          hasMoreMessages: { ...s.hasMoreMessages, [chatId]: data.hasMore },
+  1035→        }))
+  1036→      }
+  1037→    } catch (e) { console.error('[loadMoreMessages] error', e) } finally { set({ loadingMoreMessages: false }) }
+  1038→  },
+  1039→
+  1040→  toggleReaction: async (messageId, emoji) => {
+  1041→    const chatId = get().activeChatId; if (!chatId) return
+  1042→    const me = get().me; if (!me) return
+  1043→    set((s) => {
+  1044→      const msgs = s.messagesByChat[chatId] ?? []
+  1045→      const updated = msgs.map((m) => {
+  1046→        if (m.id !== messageId) return m
+  1047→        const existing = (m.reactions ?? []).find((r: any) => r.userId === me.id && r.emoji === emoji)
+  1048→        if (existing) return { ...m, reactions: (m.reactions ?? []).filter((r: any) => !(r.userId === me.id && r.emoji === emoji)) }
+  1049→        return { ...m, reactions: [...(m.reactions ?? []), { emoji, userId: me.id, userName: me.name }] }
+  1050→      })
+  1051→      return { messagesByChat: { ...s.messagesByChat, [chatId]: updated } }
+  1052→    })
+  1053→    try { await fetch(`/api/chats/${chatId}/messages/${messageId}/reactions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ emoji }), credentials: 'include' }) } catch (e) { console.error('[toggleReaction] error', e) }
+  1054→  },
+  1055→
+  1056→  deleteMessage: async (messageId) => {
+  1057→    const chatId = get().activeChatId; if (!chatId) return
+  1058→    set((s) => ({ messagesByChat: { ...s.messagesByChat, [chatId]: (s.messagesByChat[chatId] ?? []).filter((m) => m.id !== messageId) } }))
+  1059→    try { await fetch(`/api/chats/${chatId}/messages/${messageId}`, { method: 'DELETE', credentials: 'include' }) } catch (e) { console.error('[deleteMessage] error', e) }
+  1060→  },
+  1061→
+  1062→  editMessage: async (messageId, text) => {
+  1063→    const chatId = get().activeChatId; if (!chatId) return
+  1064→    set((s) => ({ messagesByChat: { ...s.messagesByChat, [chatId]: (s.messagesByChat[chatId] ?? []).map((m) => m.id === messageId ? { ...m, text, editedAt: new Date().toISOString() } : m) } }))
+  1065→    try {
+  1066→      const res = await fetch(`/api/chats/${chatId}/messages/${messageId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }), credentials: 'include' })
+  1067→      const data = await res.json()
+  1068→      if (res.ok && data.message) { set((s) => ({ messagesByChat: { ...s.messagesByChat, [chatId]: (s.messagesByChat[chatId] ?? []).map((m) => m.id === messageId ? data.message : m) } })) }
+  1069→    } catch (e) { console.error('[editMessage] error', e) }
+  1070→  },
+  1071→
+  1072→  updateSettings: async (data) => {
+  1073→    try { const res = await fetch('/api/users/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data), credentials: 'include' }); const json = await res.json(); if (res.ok && json.user) { set({ me: json.user }); if (typeof json.user.readReceipts === 'boolean') set({ readReceipts: json.user.readReceipts }); if (typeof json.user.notificationsEnabled === 'boolean') set({ notifications: json.user.notificationsEnabled }); if (typeof json.user.hapticsEnabled === 'boolean') set({ haptics: json.user.hapticsEnabled }) } } catch (e) { console.error('[updateSettings] error', e) }
+  1074→  },
+  1075→
+  1076→  refreshContacts: async () => { try { const res = await fetch('/api/contacts', { credentials: 'include' }); const data = await res.json(); if (res.ok) set({ contacts: data.contacts }) } catch (e) { console.error('[refreshContacts] error', e) } },
+  1077→  refreshStreaks: async () => { try { const res = await fetch('/api/streaks', { credentials: 'include' }); const data = await res.json(); if (res.ok) set({ streaks: data.streaks }) } catch (e) { console.error('[refreshStreaks] error', e) } },
+  1078→  refreshAuraFeed: async () => { try { const res = await fetch('/api/aura/feed', { credentials: 'include' }); const data = await res.json(); if (res.ok) set({ auraFeed: data.feed }) } catch (e) { console.error('[refreshAuraFeed] error', e) } },
+  1079→  openAuraProfile: (userId) => { set((s) => ({ activeAuraUserId: userId, screen: 'aura-profile', previousScreen: s.screen })) },
+  1080→  addAuraCard: async (userId, dataUrl, caption) => { try { const res = await fetch('/api/aura/cards', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId, dataUrl, caption }), credentials: 'include' }); const data = await res.json(); if (!res.ok) return { ok: false, error: data.error ?? 'Upload failed' }; get().refreshAuraFeed(); return { ok: true } } catch (e) { console.error('[addAuraCard] error', e); return { ok: false, error: 'Network error' } } },
+  1081→
+  1082→  refreshWorkoutPlans: async () => { try { const res = await fetch('/api/gym/plans', { credentials: 'include' }); const data = await res.json(); if (res.ok) set({ workoutPlans: data.plans }) } catch (e) { console.error('[refreshWorkoutPlans] error', e) } },
+  1083→  createWorkoutPlan: async (name, day, notes) => { try { const res = await fetch('/api/gym/plans', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, day, notes }), credentials: 'include' }); const data = await res.json(); if (!res.ok) return { ok: false, error: data.error ?? 'Failed' }; await get().refreshWorkoutPlans(); return { ok: true, planId: data.plan.id } } catch (e) { console.error('[createWorkoutPlan] error', e); return { ok: false, error: 'Network error' } } },
+  1084→  deleteWorkoutPlan: async (planId) => { set((s) => ({ workoutPlans: s.workoutPlans.filter((p) => p.id !== planId) })); try { await fetch('/api/gym/plans', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ planId }), credentials: 'include' }) } catch (e) { console.error('[deleteWorkoutPlan] error', e) } },
+  1085→  addExerciseToPlan: async (planId, exercise) => { try { const res = await fetch(`/api/gym/plans/${planId}/exercises`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(exercise), credentials: 'include' }); const data = await res.json(); if (!res.ok) return { ok: false, error: data.error ?? 'Failed' }; await get().refreshWorkoutPlans(); return { ok: true } } catch (e) { console.error('[addExerciseToPlan] error', e); return { ok: false, error: 'Network error' } } },
+  1086→  toggleExerciseCompleted: async (planId, exerciseId) => { set((s) => ({ workoutPlans: s.workoutPlans.map((p) => p.id === planId ? { ...p, exercises: p.exercises.map((e) => e.id === exerciseId ? { ...e, completed: !e.completed } : e) } : p) })); try { const plan = get().workoutPlans.find((p) => p.id === planId); const ex = plan?.exercises.find((e) => e.id === exerciseId); await fetch(`/api/gym/plans/${planId}/exercises`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ exerciseId, completed: ex?.completed }), credentials: 'include' }) } catch (e) { console.error('[toggleExerciseCompleted] error', e) } },
+  1087→  removeExerciseFromPlan: async (planId, exerciseId) => { set((s) => ({ workoutPlans: s.workoutPlans.map((p) => p.id === planId ? { ...p, exercises: p.exercises.filter((e) => e.id !== exerciseId) } : p) })); try { await fetch(`/api/gym/plans/${planId}/exercises`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ exerciseId }), credentials: 'include' }) } catch (e) { console.error('[removeExerciseFromPlan] error', e) } },
+  1088→  openGymPlan: (planId) => { set((s) => ({ activeGymPlanId: planId, screen: 'gym-plan', previousScreen: s.screen })) },
+  1089→
+  1090→  refreshDailyLog: async () => { try { const res = await fetch('/api/daily/log', { credentials: 'include' }); const data = await res.json(); if (res.ok && data.log) set({ dailyLog: data.log, dailyTotals: data.totals }) } catch (e) { console.error('[refreshDailyLog] error', e) } },
+  1091→  addFoodEntry: async (entry) => { const log = get().dailyLog; if (!log) return { ok: false, error: 'No daily log' }; try { const res = await fetch(`/api/daily/log/${log.id}/entries`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(entry), credentials: 'include' }); const data = await res.json(); if (!res.ok) return { ok: false, error: data.error ?? 'Failed' }; await get().refreshDailyLog(); return { ok: true } } catch (e) { console.error('[addFoodEntry] error', e); return { ok: false, error: 'Network error' } } },
+  1092→  removeFoodEntry: async (entryId) => { const log = get().dailyLog; if (!log) return; set((s) => ({ dailyLog: s.dailyLog ? { ...s.dailyLog, entries: s.dailyLog.entries.filter((e) => e.id !== entryId) } : null })); try { await fetch(`/api/daily/log/${log.id}/entries`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ entryId }), credentials: 'include' }); await get().refreshDailyLog() } catch (e) { console.error('[removeFoodEntry] error', e) } },
+  1093→  updateDailyGoals: async (goals) => { try { await fetch('/api/daily/log', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(goals), credentials: 'include' }); await get().refreshDailyLog() } catch (e) { console.error('[updateDailyGoals] error', e) } },
+  1094→  addWater: async (ml) => { try { await fetch('/api/daily/log', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ addWater: ml }), credentials: 'include' }); await get().refreshDailyLog() } catch (e) { console.error('[addWater] error', e) } },
+  1095→  aiEstimateFood: async (imageDataUrl) => { try { const res = await fetch('/api/daily/ai-estimate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: imageDataUrl }), credentials: 'include' }); const data = await res.json(); if (!res.ok) return { ok: false, error: data.error ?? 'AI failed' }; return { ok: true, result: data } } catch (e) { console.error('[aiEstimateFood] error', e); return { ok: false, error: 'Network error' } } },
+  1096→
+  1097→  refreshOnlineUsers: async () => { try { const res = await fetch('/api/users/online', { credentials: 'include' }); const data = await res.json(); if (res.ok) set({ onlineUsers: data.users ?? [] }) } catch (e) { console.error('[refreshOnlineUsers] error', e) } },
+  1098→  openUserProfile: (userId) => { set((s) => ({ activeUserProfileId: userId, screen: 'user-profile', previousScreen: s.screen, userProfileData: null })); fetch(`/api/users/${userId}/profile`, { credentials: 'include' }).then((r) => r.json()).then((data) => { if (data.user) set({ userProfileData: data }) }).catch((e) => console.error('[openUserProfile] fetch error', e)) },
+  1099→
+  1100→  setTyping: (chatId, isTyping) => {
+  1101→    const sock = get().socket
+  1102→    if (sock && sock.connected) {
+  1103→      sock.emit('typing', { chatId, isTyping })
+  1104→    }
+  1105→  },
+  1106→
+  1107→  setThemeName: (t) => set({ themeName: t }),
+  1108→  setThemeMode: (m) => set({ themeMode: m }),
+  1109→  setReadReceipts: (v) => { set({ readReceipts: v }); get().updateSettings({ readReceipts: v }) },
+  1110→  setNotifications: (v) => { set({ notifications: v }); get().updateSettings({ notificationsEnabled: v }) },
+  1111→  setHaptics: (v) => { set({ haptics: v }); get().updateSettings({ hapticsEnabled: v }) },
+  1112→
+  1113→  connectSocket: () => {
+  1114→    if (_socket) return
+  1115→    _socket = io('/?XTransformPort=3003', {
+  1116→      transports: ['websocket', 'polling'],
+  1117→      reconnection: true,
+  1118→      reconnectionAttempts: 10,
+  1119→      reconnectionDelay: 1500,
+  1120→    })
+  1121→
+  1122→    _socket.on('connect', () => {
+  1123→      set({ socketConnected: true })
+  1124→      const token = get().authToken
+  1125→      if (token) _socket!.emit('auth', { token })
+  1126→    })
+  1127→    _socket.on('disconnect', () => set({ socketConnected: false }))
+  1128→    _socket.on('auth-ok', (payload: { userId: string }) => {
+  1129→      set((s) => ({ onlineUserIds: new Set([...s.onlineUserIds, payload.userId]) }))
+  1130→    })
+  1131→    _socket.on('auth-error', (payload: { message?: string }) => {
+  1132→      console.warn('[socket] auth-error', payload?.message)
+  1133→    })
+  1134→    _socket.on('message', (payload: { chatId: string; message: ApiMessage }) => {
+  1135→      const { chatId, message } = payload
+  1136→      set((s) => ({
+  1137→        messagesByChat: {
+  1138→          ...s.messagesByChat,
+  1139→          [chatId]: [...(s.messagesByChat[chatId] ?? []), message],
+  1140→        },
+  1141→      }))
+  1142→      get().refreshChats()
+  1143→    })
+  1144→    _socket.on('chat-updated', () => {
+  1145→      get().refreshChats()
+  1146→    })
+  1147→    _socket.on('presence', (payload: { userId: string; online: boolean }) => {
+  1148→      set((s) => {
+  1149→        const next = new Set(s.onlineUserIds)
+  1150→        if (payload.online) next.add(payload.userId)
+  1151→        else next.delete(payload.userId)
+  1152→        return { onlineUserIds: next }
+  1153→      })
+  1154→    })
+  1155→    _socket.on('typing', (payload: { chatId: string; userId: string; name: string; isTyping: boolean }) => {
+  1156→      set((s) => ({
+  1157→        typingByChat: {
+  1158→          ...s.typingByChat,
+  1159→          [payload.chatId]: payload.isTyping ? { userId: payload.userId, name: payload.name } : null,
+  1160→        },
+  1161→      }))
+  1162→      if (payload.isTyping) {
+  1163→        setTimeout(() => {
+  1164→          const cur = get().typingByChat[payload.chatId]
+  1165→          if (cur?.userId === payload.userId) {
+  1166→            set((s) => ({ typingByChat: { ...s.typingByChat, [payload.chatId]: null } }))
+  1167→          }
+  1168→        }, 3000)
+  1169→      }
+  1170→    })
+  1171→    _socket.on('reaction', (payload: { chatId: string; reaction: { messageId: string; message: ApiMessage } }) => {
+  1172→      const { chatId, reaction } = payload
+  1173→      set((s) => {
+  1174→        const msgs = s.messagesByChat[chatId] ?? []
+  1175→        const updated = msgs.map((m) => m.id === reaction.messageId ? reaction.message : m)
+  1176→        return { messagesByChat: { ...s.messagesByChat, [chatId]: updated } }
+  1177→      })
+  1178→    })
+  1179→    _socket.on('message-deleted', (payload: { chatId: string; messageId: string }) => {
+  1180→      const { chatId, messageId } = payload
+  1181→      set((s) => ({ messagesByChat: { ...s.messagesByChat, [chatId]: (s.messagesByChat[chatId] ?? []).filter((m) => m.id !== messageId) } }))
+  1182→    })
+  1183→    _socket.on('message-updated', (payload: { chatId: string; message: ApiMessage }) => {
+  1184→      const { chatId, message } = payload
+  1185→      set((s) => ({ messagesByChat: { ...s.messagesByChat, [chatId]: (s.messagesByChat[chatId] ?? []).map((m) => m.id === message.id ? message : m) } }))
+  1186→    })
+  1187→    _socket.on('messages-read', (payload: { chatId: string; readByUserId: string }) => {
+  1188→      const { chatId, readByUserId } = payload
+  1189→      set((s) => {
+  1190→        const msgs = s.messagesByChat[chatId] ?? []
+  1191→        return { messagesByChat: { ...s.messagesByChat, [chatId]: msgs.map((m) => m.senderId !== readByUserId ? { ...m, readByPeer: true } : m) } }
+  1192→      })
+  1193→    })
+  1194→    _socket.on('call-signal', (payload: { fromUserId: string; fromName?: string; type: string; data?: unknown; chatId?: string; kind?: string }) => {
+  1195→      const { type, data, fromUserId, fromName, chatId, kind } = payload
+  1196→      if (type === 'invite') {
+  1197→        set({ incomingCall: { chatId: chatId ?? '', fromUserId, fromName: fromName ?? 'Unknown', kind: (kind as 'voice' | 'video') ?? 'voice', offer: null } })
+  1198→      } else if (type === 'offer') {
+  1199→        const incoming = get().incomingCall
+  1200→        if (incoming && incoming.fromUserId === fromUserId) {
+  1201→          set({ incomingCall: { ...incoming, offer: data as RTCSessionDescriptionInit } })
+  1202→        } else {
+  1203→          set({ incomingCall: { chatId: chatId ?? '', fromUserId, fromName: fromName ?? 'Unknown', kind: (kind as 'voice' | 'video') ?? 'voice', offer: data as RTCSessionDescriptionInit } })
+  1204→        }
+  1205→      } else if (type === 'end' || type === 'reject') {
+  1206→        _cleanupCallResources()
+  1207→        set((s) => ({ activeCall: null, incomingCall: null, screen: s.previousScreen ?? 'chats', previousScreen: null }))
+  1208→      }
+  1209→    })
+  1210→
+  1211→    set({ socket: _socket })
+  1212→  },
+  1213→}))
+  1214→
+  1215→// ----------------- selectors -----------------
+  1216→
+  1217→export function useActiveChat() {
+  1218→  return useApp((s) => s.chats.find((c) => c.id === s.activeChatId) ?? null)
+  1219→}
+  1220→
+  1221→export function useActiveMessages() {
+  1222→  return useApp(
+  1223→    useShallow((s) => {
+  1224→      if (!s.activeChatId) return [] as ApiMessage[]
+  1225→      return s.messagesByChat[s.activeChatId] ?? ([] as ApiMessage[])
+  1226→    }),
+  1227→  )
+  1228→}
+  1229→
+  1230→export function useFilteredChats() {
+  1231→  return useApp(
+  1232→    useShallow((s) => {
+  1233→      const q = s.searchQuery.trim().toLowerCase()
+  1234→      let list = s.chats
+  1235→      if (q) {
+  1236→        list = list.filter(
+  1237→          (c) =>
+  1238→            c.name.toLowerCase().includes(q) ||
+  1239→            (c.lastMessage?.text ?? '').toLowerCase().includes(q),
+  1240→        )
+  1241→      }
+  1242→      // Saved first, then by last message desc
+  1243→      return [...list].sort((a, b) => {
+  1244→        if (a.kind === 'saved' && b.kind !== 'saved') return -1
+  1245→        if (b.kind === 'saved' && a.kind !== 'saved') return 1
+  1246→        const at = (c: typeof a) => c.lastMessage ? Date.parse(c.lastMessage.createdAt) : Date.parse(c.createdAt)
+  1247→        return at(b) - at(a)
+  1248→      })
+  1249→    }),
+  1250→  )
+  1251→}
+  1252→
